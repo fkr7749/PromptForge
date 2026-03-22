@@ -13,11 +13,11 @@ const nextConfig: NextConfig = {
     ],
     formats: ['image/avif', 'image/webp'],
   },
+  outputFileTracingIncludes: {
+    '/api/**/*': ['./packages/database/generated/client/*.node'],
+  },
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
-    outputFileTracingIncludes: {
-      '/api/**/*': ['./packages/database/generated/client/*.node'],
-    },
   },
   headers: async () => [
     {
