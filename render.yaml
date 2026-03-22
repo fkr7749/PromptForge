@@ -1,0 +1,193 @@
+services:
+  # ─── Auth Service ──────────────────────────────────────────
+  - type: web
+    name: promptforge-auth
+    runtime: docker
+    dockerfilePath: ./apps/services/auth-service/Dockerfile
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4001
+      - key: DATABASE_URL
+        fromDatabase:
+          name: promptforge-db
+          property: connectionString
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+    healthCheckPath: /health/live
+
+  # ─── Prompt Service ────────────────────────────────────────
+  - type: web
+    name: promptforge-prompts
+    runtime: docker
+    dockerfilePath: ./apps/services/prompt-service/Dockerfile
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4002
+      - key: DATABASE_URL
+        fromDatabase:
+          name: promptforge-db
+          property: connectionString
+      - key: REDIS_URL
+        sync: false
+    healthCheckPath: /health/live
+
+  # ─── AI Execution Service ──────────────────────────────────
+  - type: web
+    name: promptforge-ai
+    runtime: docker
+    dockerfilePath: ./apps/services/ai-execution/Dockerfile
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4003
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: MISTRAL_API_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+    healthCheckPath: /health/live
+
+  # ─── Playground Service ────────────────────────────────────
+  - type: web
+    name: promptforge-playground
+    runtime: docker
+    dockerfilePath: ./apps/services/playground/Dockerfile
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4004
+      - key: DATABASE_URL
+        fromDatabase:
+          name: promptforge-db
+          property: connectionString
+      - key: REDIS_URL
+        sync: false
+    healthCheckPath: /health/live
+
+  # ─── Search Service ────────────────────────────────────────
+  - type: web
+    name: promptforge-search
+    runtime: docker
+    dockerfilePath: ./apps/services/search-service/Dockerfile
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4005
+      - key: DATABASE_URL
+        fromDatabase:
+          name: promptforge-db
+          property: connectionString
+      - key: MEILISEARCH_URL
+        sync: false
+      - key: MEILISEARCH_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+    healthCheckPath: /health/live
+
+  # ─── Analytics Service ─────────────────────────────────────
+  - type: web
+    name: promptforge-analytics
+    runtime: docker
+    dockerfilePath: ./apps/services/analytics/Dockerfile
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4006
+      - key: DATABASE_URL
+        fromDatabase:
+          name: promptforge-db
+          property: connectionString
+      - key: REDIS_URL
+        sync: false
+    healthCheckPath: /health/live
+
+  # ─── User Service ──────────────────────────────────────────
+  - type: web
+    name: promptforge-users
+    runtime: docker
+    dockerfilePath: ./apps/services/user-service/Dockerfile
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4007
+      - key: DATABASE_URL
+        fromDatabase:
+          name: promptforge-db
+          property: connectionString
+    healthCheckPath: /health/live
+
+  # ─── Marketplace Service ───────────────────────────────────
+  - type: web
+    name: promptforge-marketplace
+    runtime: docker
+    dockerfilePath: ./apps/services/marketplace/Dockerfile
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4008
+      - key: DATABASE_URL
+        fromDatabase:
+          name: promptforge-db
+          property: connectionString
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+    healthCheckPath: /health/live
+
+  # ─── Safety Service (Python FastAPI) ──────────────────────
+  - type: web
+    name: promptforge-safety
+    runtime: docker
+    dockerfilePath: ./apps/services/safety-service/Dockerfile
+    plan: free
+    envVars:
+      - key: PORT
+        value: 4009
+      - key: REDIS_URL
+        sync: false
+    healthCheckPath: /health
+
+databases:
+  - name: promptforge-db
+    plan: free
+    databaseName: promptforge
+    user: promptforge_user

@@ -1,0 +1,714 @@
+// This is the PromptForge database schema
+// Uses Neon PostgreSQL with pgvector extension
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+  output          = "../generated/client"
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector"), pg_trgm, uuid_ossp(map: "uuid-ossp")]
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  USER
+  CREATOR
+  MODERATOR
+  ADMIN
+}
+
+enum PromptCategory {
+  CODING
+  WRITING
+  ANALYSIS
+  CREATIVITY
+  EDUCATION
+  BUSINESS
+  RESEARCH
+  ROLEPLAY
+  OTHER
+}
+
+enum AIModel {
+  GPT4O
+  GPT4
+  CLAUDE_3_5_SONNET
+  CLAUDE_3_OPUS
+  GEMINI_1_5_PRO
+  MISTRAL_LARGE
+}
+
+enum PurchaseStatus {
+  PENDING
+  COMPLETED
+  REFUNDED
+  FAILED
+}
+
+enum NotificationType {
+  UPVOTE
+  COMMENT
+  FORK
+  FOLLOW
+  MENTION
+  SALE
+  ACHIEVEMENT
+}
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String   @unique
+  username      String   @unique
+  displayName   String
+  passwordHash  String?
+  avatarUrl     String?
+  bio           String?
+  website       String?
+  githubId      String?  @unique
+  googleId      String?  @unique
+  isPremium     Boolean  @default(false)
+  role          UserRole @default(USER)
+  eloRating     Int      @default(1000)
+  totalEarnings Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  onboardingCompleted Boolean   @default(false)
+  userType            String?
+  currentStreak       Int       @default(0)
+  longestStreak       Int       @default(0)
+  lastActiveDate      DateTime?
+  githubUrl           String?
+  twitterUrl          String?
+  emailDigestEnabled  Boolean   @default(true)
+
+  // Relations
+  prompts         Prompt[]
+  promptVersions  PromptVersion[]
+  comments        Comment[]
+  upvotes         Upvote[]
+  collections     Collection[]
+  following       Follow[]         @relation("following")
+  followers       Follow[]         @relation("followers")
+  executions      PromptExecution[]
+  purchases       Purchase[]       @relation("buyer")
+  sales           Purchase[]       @relation("seller")
+  notifications   Notification[]
+  refreshTokens   RefreshToken[]
+  badges          UserBadge[]
+  battleVotes     BattleVote[]
+  apiKeys         ApiKey[]
+  challengeSubmissions ChallengeSubmission[]
+  playgroundSessions   PlaygroundSession[]
+  ragWorkspaces   RagWorkspace[]
+  datasets        Dataset[]
+
+  @@index([email])
+  @@index([username])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  token     String   @unique
+  userId    String   @db.Uuid
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+// ─── Prompts ─────────────────────────────────────────────────────────────────
+
+model Prompt {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title            String
+  description      String
+  category         PromptCategory
+  isPublic         Boolean        @default(true)
+  isPremium        Boolean        @default(false)
+  price            Decimal?       @db.Decimal(10, 2)
+  authorId         String         @db.Uuid
+  forkedFromId     String?        @db.Uuid
+  currentVersionId String?        @db.Uuid
+  forkCount        Int            @default(0)
+  upvoteCount      Int            @default(0)
+  viewCount        Int            @default(0)
+  downloadCount    Int            @default(0)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  // Relations
+  author          User             @relation(fields: [authorId], references: [id])
+  forkedFrom      Prompt?          @relation("forks", fields: [forkedFromId], references: [id])
+  forks           Prompt[]         @relation("forks")
+  versions        PromptVersion[]
+  tags            PromptTag[]
+  modelSupport    PromptModelSupport[]
+  comments        Comment[]
+  upvotes         Upvote[]
+  collectionItems CollectionItem[]
+  executions      PromptExecution[]
+  purchases       Purchase[]
+  embedding       PromptEmbedding?
+  battleSessionsA BattleSession[]  @relation("battleA")
+  battleSessionsB BattleSession[]  @relation("battleB")
+  challengeSubmissions ChallengeSubmission[]
+  evalSuites      EvalSuite[]
+  releases        PromptRelease[]
+  benchmarkSuites BenchmarkSuite[]
+
+  @@index([authorId])
+  @@index([category])
+  @@index([isPublic, isPremium])
+  @@index([createdAt(sort: Desc)])
+  @@index([upvoteCount(sort: Desc)])
+  @@map("prompts")
+}
+
+model PromptVersion {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promptId  String   @db.Uuid
+  version   Int
+  content   String
+  changelog String?
+  variables Json     @default("[]") // [{name, description, default}]
+  authorId  String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  prompt Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorId], references: [id])
+
+  @@unique([promptId, version])
+  @@index([promptId])
+  @@map("prompt_versions")
+}
+
+model PromptEmbedding {
+  id        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promptId  String                      @unique @db.Uuid
+  embedding Unsupported("vector(1536)")
+  model     String                      @default("text-embedding-3-large")
+  createdAt DateTime                    @default(now())
+
+  prompt Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@map("prompt_embeddings")
+}
+
+// ─── Tags ────────────────────────────────────────────────────────────────────
+
+model Tag {
+  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String      @unique
+  slug      String      @unique
+  count     Int         @default(0)
+  prompts   PromptTag[]
+
+  @@map("tags")
+}
+
+model PromptTag {
+  promptId String @db.Uuid
+  tagId    String @db.Uuid
+
+  prompt Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([promptId, tagId])
+  @@map("prompt_tags")
+}
+
+model PromptModelSupport {
+  promptId String  @db.Uuid
+  model    AIModel
+
+  prompt Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@id([promptId, model])
+  @@map("prompt_model_support")
+}
+
+// ─── Social ──────────────────────────────────────────────────────────────────
+
+model Comment {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promptId  String   @db.Uuid
+  authorId  String   @db.Uuid
+  parentId  String?  @db.Uuid
+  content   String
+  upvotes   Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  prompt  Prompt    @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  author  User      @relation(fields: [authorId], references: [id])
+  parent  Comment?  @relation("replies", fields: [parentId], references: [id])
+  replies Comment[] @relation("replies")
+
+  @@index([promptId])
+  @@map("comments")
+}
+
+model Upvote {
+  userId    String   @db.Uuid
+  promptId  String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prompt Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@id([userId, promptId])
+  @@map("upvotes")
+}
+
+model Follow {
+  followerId  String   @db.Uuid
+  followingId String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("followers", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followingId])
+  @@map("follows")
+}
+
+// ─── Collections ─────────────────────────────────────────────────────────────
+
+model Collection {
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  description String?
+  isPublic    Boolean          @default(true)
+  ownerId     String           @db.Uuid
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  owner   User             @relation(fields: [ownerId], references: [id])
+  items   CollectionItem[]
+
+  @@index([ownerId])
+  @@map("collections")
+}
+
+model CollectionItem {
+  collectionId String   @db.Uuid
+  promptId     String   @db.Uuid
+  addedAt      DateTime @default(now())
+  order        Int      @default(0)
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  prompt     Prompt     @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, promptId])
+  @@map("collection_items")
+}
+
+// ─── Executions ──────────────────────────────────────────────────────────────
+
+model PromptExecution {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promptId     String?  @db.Uuid
+  userId       String?  @db.Uuid
+  model        AIModel
+  inputContent String
+  outputContent String
+  variables    Json?
+  inputTokens  Int
+  outputTokens Int
+  latencyMs    Int
+  cost         Decimal  @db.Decimal(10, 6)
+  success      Boolean  @default(true)
+  errorMessage String?
+  createdAt    DateTime @default(now())
+
+  prompt Prompt? @relation(fields: [promptId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
+
+  @@index([promptId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([model])
+  @@map("prompt_executions")
+}
+
+// ─── Marketplace ─────────────────────────────────────────────────────────────
+
+model Purchase {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promptId        String         @db.Uuid
+  buyerId         String         @db.Uuid
+  sellerId        String         @db.Uuid
+  amount          Decimal        @db.Decimal(10, 2)
+  platformFee     Decimal        @db.Decimal(10, 2)
+  stripePaymentId String?        @unique
+  status          PurchaseStatus @default(PENDING)
+  createdAt       DateTime       @default(now())
+
+  prompt Prompt @relation(fields: [promptId], references: [id])
+  buyer  User   @relation("buyer", fields: [buyerId], references: [id])
+  seller User   @relation("seller", fields: [sellerId], references: [id])
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@map("purchases")
+}
+
+// ─── Battle Arena ────────────────────────────────────────────────────────────
+
+model BattleVote {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId   String   @db.Uuid
+  voterId     String   @db.Uuid
+  winnerId    String   @db.Uuid
+  loserId     String   @db.Uuid
+  explanation String?
+  scores      Json?    // {dimension: score} for rubric voting
+  createdAt   DateTime @default(now())
+
+  voter   User          @relation(fields: [voterId], references: [id])
+  session BattleSession @relation(fields: [sessionId], references: [id])
+
+  @@unique([sessionId, voterId])
+  @@index([sessionId])
+  @@map("battle_votes")
+}
+
+model BattleSession {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promptAId   String   @db.Uuid
+  promptBId   String   @db.Uuid
+  theme       String?
+  status      String   @default("active")
+  votesA      Int      @default(0)
+  votesB      Int      @default(0)
+  winnerId    String?  @db.Uuid
+  rubric      Json?    // [{name, description}] custom scoring dimensions
+  isAnonymous Boolean  @default(false)
+  bracketId   String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+
+  promptA Prompt      @relation("battleA", fields: [promptAId], references: [id])
+  promptB Prompt      @relation("battleB", fields: [promptBId], references: [id])
+  votes   BattleVote[]
+
+  @@index([status])
+  @@map("battle_sessions")
+}
+
+model ApiKey {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @db.Uuid
+  name       String
+  key        String    @unique
+  prefix     String
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("api_keys")
+}
+
+// ─── Notifications ───────────────────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String           @db.Uuid
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ─── Gamification ────────────────────────────────────────────────────────────
+
+model Badge {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String      @unique
+  description String
+  icon        String
+  color       String
+  condition   Json
+  users       UserBadge[]
+
+  @@map("badges")
+}
+
+model UserBadge {
+  userId    String   @db.Uuid
+  badgeId   String   @db.Uuid
+  earnedAt  DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge Badge @relation(fields: [badgeId], references: [id])
+
+  @@id([userId, badgeId])
+  @@map("user_badges")
+}
+
+// ─── Daily Challenges ──────────────────────────────────────────────────────────
+
+model DailyChallenge {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  date        DateTime @unique @db.Date
+  theme       String
+  description String
+  category    String
+  status      String   @default("active") // active | completed
+  winnerId    String?  @db.Uuid
+  createdAt   DateTime @default(now())
+
+  submissions ChallengeSubmission[]
+
+  @@map("daily_challenges")
+}
+
+model ChallengeSubmission {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  challengeId String         @db.Uuid
+  userId      String         @db.Uuid
+  promptId    String         @db.Uuid
+  votes       Int            @default(0)
+  createdAt   DateTime       @default(now())
+
+  challenge DailyChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prompt    Prompt         @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, userId])
+  @@index([challengeId])
+  @@map("challenge_submissions")
+}
+
+// ─── Playground Sessions ───────────────────────────────────────────────────────
+
+model PlaygroundSession {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @db.Uuid
+  title          String?
+  promptContent  String
+  systemPrompt   String?
+  variableValues Json     @default("{}")
+  selectedModels String[]
+  temperature    Float    @default(0.7)
+  maxTokens      Int      @default(2048)
+  pinned         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("playground_sessions")
+}
+
+// ─── Eval Harness ─────────────────────────────────────────────────────────────
+
+model EvalSuite {
+  id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promptId   String     @db.Uuid
+  name       String
+  dimensions Json       // [{name, weight, rubric}]
+  createdAt  DateTime   @default(now())
+
+  prompt Prompt     @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  cases  EvalCase[]
+  runs   EvalRun[]
+
+  @@index([promptId])
+  @@map("eval_suites")
+}
+
+model EvalCase {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  suiteId   String   @db.Uuid
+  input     Json     // variable key/value pairs
+  expected  String?
+  createdAt DateTime @default(now())
+
+  suite   EvalSuite    @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  results EvalResult[]
+
+  @@index([suiteId])
+  @@map("eval_cases")
+}
+
+model EvalRun {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  suiteId      String   @db.Uuid
+  versionId    String   @db.Uuid
+  model        String
+  overallScore Float
+  passed       Int
+  total        Int
+  createdAt    DateTime @default(now())
+
+  suite   EvalSuite    @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  results EvalResult[]
+
+  @@index([suiteId])
+  @@map("eval_runs")
+}
+
+model EvalResult {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId        String  @db.Uuid
+  caseId       String  @db.Uuid
+  output       String
+  scores       Json    // {dimensionName: 0-10}
+  overallScore Float
+  passed       Boolean
+  reasoning    String?
+
+  run  EvalRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  case EvalCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@map("eval_results")
+}
+
+// ─── RAG Workspaces ───────────────────────────────────────────────────────────
+
+model RagWorkspace {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String        @db.Uuid
+  name        String
+  description String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents RagDocument[]
+
+  @@index([userId])
+  @@map("rag_workspaces")
+}
+
+model RagDocument {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String   @db.Uuid
+  name        String
+  content     String
+  chunkCount  Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  workspace RagWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  chunks    RagChunk[]
+
+  @@index([workspaceId])
+  @@map("rag_documents")
+}
+
+model RagChunk {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId String   @db.Uuid
+  content    String
+  chunkIndex Int
+  createdAt  DateTime @default(now())
+
+  document RagDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("rag_chunks")
+}
+
+// ─── Release Workflow ─────────────────────────────────────────────────────────
+
+model PromptRelease {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promptId    String   @db.Uuid
+  versionId   String   @db.Uuid
+  environment String   // draft | review | approved | production
+  notes       String?
+  createdBy   String   @db.Uuid
+  approvedBy  String?  @db.Uuid
+  createdAt   DateTime @default(now())
+
+  prompt Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@index([promptId])
+  @@map("prompt_releases")
+}
+
+// ─── Benchmark ────────────────────────────────────────────────────────────────
+
+model BenchmarkSuite {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promptId  String   @db.Uuid
+  name      String
+  cases     Json     // [{input: {vars}, expectedPattern: string}]
+  createdAt DateTime @default(now())
+
+  prompt Prompt         @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  runs   BenchmarkRun[]
+
+  @@index([promptId])
+  @@map("benchmark_suites")
+}
+
+model BenchmarkRun {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  suiteId   String   @db.Uuid
+  versionId String   @db.Uuid
+  results   Json     // [{model, passRate, avgLatency, avgCost, cases: [...]}]
+  createdAt DateTime @default(now())
+
+  suite BenchmarkSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+
+  @@index([suiteId])
+  @@map("benchmark_runs")
+}
+
+// ─── Dataset Trainer ──────────────────────────────────────────────────────────
+
+model Dataset {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @db.Uuid
+  name        String
+  description String?
+  rows        Json     // [{...columnValues}]
+  rowCount    Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trainings TrainingRun[]
+
+  @@index([userId])
+  @@map("datasets")
+}
+
+model TrainingRun {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  datasetId       String   @db.Uuid
+  generatedPrompt String
+  variables       Json     @default("[]")
+  model           String
+  createdAt       DateTime @default(now())
+
+  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@index([datasetId])
+  @@map("training_runs")
+}

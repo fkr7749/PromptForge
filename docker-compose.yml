@@ -1,0 +1,153 @@
+name: promptforge
+
+services:
+  # ─── Databases ─────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: promptforge
+      POSTGRES_USER: promptforge
+      POSTGRES_PASSWORD: promptforge_dev
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U promptforge"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.11
+    ports:
+      - "7700:7700"
+    environment:
+      MEILI_NO_ANALYTICS: "true"
+      MEILI_ENV: development
+    volumes:
+      - meilisearch_data:/meili_data
+
+  # ─── Services ──────────────────────────────────────────────
+  auth-service:
+    build:
+      context: .
+      dockerfile: apps/services/auth-service/Dockerfile
+      target: development
+    ports:
+      - "4001:4001"
+    environment:
+      NODE_ENV: development
+      PORT: 4001
+      DATABASE_URL: postgresql://promptforge:promptforge_dev@postgres:5432/promptforge
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: dev_jwt_secret_change_in_prod
+      JWT_REFRESH_SECRET: dev_refresh_secret_change_in_prod
+      FRONTEND_URL: http://localhost:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/services/auth-service/src:/app/src
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/services/auth-service/src
+          target: /app/src
+
+  prompt-service:
+    build:
+      context: .
+      dockerfile: apps/services/prompt-service/Dockerfile
+      target: development
+    ports:
+      - "4002:4002"
+    environment:
+      NODE_ENV: development
+      PORT: 4002
+      DATABASE_URL: postgresql://promptforge:promptforge_dev@postgres:5432/promptforge
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./apps/services/prompt-service/src:/app/src
+
+  ai-execution:
+    build:
+      context: .
+      dockerfile: apps/services/ai-execution/Dockerfile
+      target: development
+    ports:
+      - "4003:4003"
+    environment:
+      NODE_ENV: development
+      PORT: 4003
+      REDIS_URL: redis://redis:6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/services/ai-execution/src:/app/src
+
+  playground:
+    build:
+      context: .
+      dockerfile: apps/services/playground/Dockerfile
+      target: development
+    ports:
+      - "4004:4004"
+    environment:
+      NODE_ENV: development
+      PORT: 4004
+      DATABASE_URL: postgresql://promptforge:promptforge_dev@postgres:5432/promptforge
+      REDIS_URL: redis://redis:6379
+      AI_EXECUTION_URL: http://ai-execution:4003
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  search-service:
+    build:
+      context: .
+      dockerfile: apps/services/search-service/Dockerfile
+      target: development
+    ports:
+      - "4005:4005"
+    environment:
+      NODE_ENV: development
+      PORT: 4005
+      DATABASE_URL: postgresql://promptforge:promptforge_dev@postgres:5432/promptforge
+      MEILISEARCH_URL: http://meilisearch:7700
+      MEILISEARCH_KEY: ""
+    depends_on:
+      postgres:
+        condition: service_healthy
+      meilisearch:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  redis_data:
+  meilisearch_data:

@@ -1,0 +1,28 @@
+{
+  "name": "@promptforge/database",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts"
+  },
+  "scripts": {
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "db:seed": "tsx src/seed.ts",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.2",
+    "@types/bcryptjs": "^2.4.6",
+    "bcryptjs": "^2.4.3"
+  },
+  "devDependencies": {
+    "@promptforge/tsconfig": "workspace:*",
+    "prisma": "^6.19.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

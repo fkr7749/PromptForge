@@ -1,0 +1,13 @@
+{
+  "name": "@promptforge/types",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "@promptforge/tsconfig": "workspace:*",
+    "typescript": "^5.7.2"
+  }
+}
