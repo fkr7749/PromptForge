@@ -1,0 +1,26 @@
+# ─── Oracle Cloud Identity ────────────────────────────────────────────────────
+# Find these at: cloud.oracle.com → Profile menu → Tenancy / My Profile
+
+tenancy_ocid     = "ocid1.tenancy.oc1..aaaaaaaaXXXXXXXXXXXXXXXX"
+user_ocid        = "ocid1.user.oc1..aaaaaaaaXXXXXXXXXXXXXXXX"
+fingerprint      = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
+private_key_path = "~/.oci/oci_api_key.pem"
+region           = "us-ashburn-1"
+
+# ─── Compartment ─────────────────────────────────────────────────────────────
+# Identity → Compartments → create "promptforge" → copy OCID
+
+compartment_id = "ocid1.compartment.oc1..aaaaaaaaXXXXXXXXXXXXXXXX"
+
+# ─── SSH Access ──────────────────────────────────────────────────────────────
+# Run: ssh-keygen -t ed25519 -f ~/.ssh/promptforge_oracle
+# Then: cat ~/.ssh/promptforge_oracle.pub
+
+ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... promptforge-oracle"
+
+# ─── Resource Sizing (free tier limits: 4 OCPU + 24 GB total) ────────────────
+control_plane_ocpus     = 2
+control_plane_memory_gb = 12
+worker_ocpus            = 1
+worker_memory_gb        = 6
+worker_count            = 2

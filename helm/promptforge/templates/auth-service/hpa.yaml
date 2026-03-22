@@ -1,0 +1,24 @@
+{{- if .Values.authService.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "promptforge.fullname" . }}-auth-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "promptforge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: auth-service
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "promptforge.fullname" . }}-auth-service
+  minReplicas: {{ .Values.authService.replicas }}
+  maxReplicas: {{ mul .Values.authService.replicas 3 }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+{{- end }}

@@ -1,0 +1,24 @@
+{{- if .Values.marketplace.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "promptforge.fullname" . }}-marketplace
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "promptforge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: marketplace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "promptforge.fullname" . }}-marketplace
+  minReplicas: {{ .Values.marketplace.replicas }}
+  maxReplicas: {{ mul .Values.marketplace.replicas 3 }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+{{- end }}

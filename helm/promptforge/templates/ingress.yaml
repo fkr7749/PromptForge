@@ -1,0 +1,95 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "promptforge.fullname" . }}-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "promptforge.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    cert-manager.io/cluster-issuer: {{ .Values.certManager.issuer }}
+spec:
+  ingressClassName: nginx
+  {{- if .Values.ingress.tlsEnabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+      secretName: promptforge-tls
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /api/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "promptforge.fullname" . }}-auth-service
+                port:
+                  number: 4001
+          - path: /api/prompts
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "promptforge.fullname" . }}-prompt-service
+                port:
+                  number: 4002
+          - path: /api/execute
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "promptforge.fullname" . }}-ai-execution
+                port:
+                  number: 4003
+          - path: /api/playground
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "promptforge.fullname" . }}-playground
+                port:
+                  number: 4004
+          - path: /api/search
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "promptforge.fullname" . }}-search-service
+                port:
+                  number: 4005
+          - path: /api/analytics
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "promptforge.fullname" . }}-analytics
+                port:
+                  number: 4006
+          - path: /api/users
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "promptforge.fullname" . }}-user-service
+                port:
+                  number: 4007
+          - path: /api/marketplace
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "promptforge.fullname" . }}-marketplace
+                port:
+                  number: 4008
+          - path: /api/safety
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "promptforge.fullname" . }}-safety-service
+                port:
+                  number: 4009
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "promptforge.fullname" . }}-frontend
+                port:
+                  number: 3000
+{{- end }}

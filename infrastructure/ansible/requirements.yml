@@ -1,0 +1,31 @@
+---
+# ============================================================
+# PromptForge Ansible Galaxy Requirements
+# ============================================================
+# Install all required collections with:
+#   ansible-galaxy collection install -r requirements.yml
+#
+# These collections provide modules used across all roles:
+#   ansible.posix       — sysctl, firewalld, mount, authorized_key
+#   community.general   — ufw, timezone, modprobe, docker_container
+#   community.kubernetes — k8s, helm_repository, helm (optional)
+# ============================================================
+
+collections:
+  - name: ansible.posix
+    version: ">=1.5.4"
+    source: https://galaxy.ansible.com
+
+  - name: community.general
+    version: ">=8.5.0"
+    source: https://galaxy.ansible.com
+
+  - name: community.docker
+    version: ">=3.9.0"
+    source: https://galaxy.ansible.com
+
+  # Optional: use the kubernetes.core collection for k8s module
+  # instead of raw kubectl shell commands (requires pip: kubernetes)
+  # - name: kubernetes.core
+  #   version: ">=2.4.0"
+  #   source: https://galaxy.ansible.com
