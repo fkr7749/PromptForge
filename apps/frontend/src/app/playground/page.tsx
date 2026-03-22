@@ -598,7 +598,7 @@ function PlaygroundInner() {
         </AnimatePresence>
 
         {/* ── Center — prompt editor ──────────────────────────────────────── */}
-        <div className={`${sidebarOpen ? 'w-[400px]' : 'w-[440px]'} shrink-0 border-r border-[#2A2A2E] bg-[#0F0F11] flex flex-col overflow-hidden h-full
+        <div className={`${sidebarOpen ? 'w-[400px]' : 'w-[440px]'} shrink-0 border-r border-[#2A2A2E] bg-[#0F0F11] flex flex-col overflow-y-auto h-full
           ${mobileTab === 'prompt' ? 'flex' : 'hidden'} lg:flex`}>
 
           {/* Editor header */}
@@ -621,15 +621,15 @@ function PlaygroundInner() {
             </div>
           </div>
 
-          {/* Prompt textarea — takes most space */}
-          <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+          {/* Prompt textarea */}
+          <div className="flex flex-col">
             <textarea
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
               onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); run() } }}
               placeholder="Write your prompt here… Use {{variable}} for dynamic values"
-              className="flex-1 w-full resize-none bg-transparent p-4 font-mono text-sm text-[#C8C8CC] leading-relaxed placeholder:text-[#333338] focus:outline-none"
-              style={{ minHeight: 0 }}
+              className="w-full resize-none bg-transparent p-4 font-mono text-sm text-[#C8C8CC] leading-relaxed placeholder:text-[#333338] focus:outline-none"
+              style={{ minHeight: '260px' }}
             />
           </div>
 
