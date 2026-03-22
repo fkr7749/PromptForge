@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
   transpilePackages: ['@promptforge/types', '@promptforge/database'],
   // Required for monorepo: trace files from the repo root, not just apps/frontend
   outputFileTracingRoot: path.join(__dirname, '../../'),
+  outputFileTracingIncludes: {
+    '/api/**/*': ['./generated/client/*.node'],
+  },
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'avatars.githubusercontent.com' },
