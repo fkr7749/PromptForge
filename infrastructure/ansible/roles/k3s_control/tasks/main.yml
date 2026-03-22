@@ -1,0 +1,181 @@
+---
+# ============================================================
+# Role: k3s_control — Install K3s Server (Control Plane)
+# ============================================================
+# Runs on: [control_plane] hosts only
+# Order: MUST complete before k3s_worker role runs
+# ============================================================
+
+# ── 1. Download K3s Installation Script ──────────────────────
+- name: k3s_control | Download K3s installation script
+  ansible.builtin.get_url:
+    url: "{{ k3s_install_script_url }}"
+    dest: /tmp/k3s_install.sh
+    mode: "0755"
+    force: false
+  become: true
+  tags: [k3s, k3s_control]
+
+# ── 2. Install K3s Server ─────────────────────────────────────
+- name: k3s_control | Check if K3s server is already installed
+  ansible.builtin.stat:
+    path: "{{ k3s_install_dir }}/k3s"
+  register: k3s_binary_stat
+  tags: [k3s, k3s_control]
+
+- name: k3s_control | Install K3s server
+  ansible.builtin.shell:
+    cmd: /tmp/k3s_install.sh {{ k3s_server_args }} {{ k3s_server_args_extra }}
+    creates: "{{ k3s_install_dir }}/k3s"
+  become: true
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+    INSTALL_K3S_EXEC: "{{ k3s_server_args }} {{ k3s_server_args_extra }}"
+    K3S_CLUSTER_INIT: "false"
+  tags: [k3s, k3s_control]
+  notify: restart k3s
+
+# ── 3. Enable and Start K3s Service ──────────────────────────
+- name: k3s_control | Enable and start K3s server service
+  ansible.builtin.systemd:
+    name: "{{ k3s_systemd_service }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+  tags: [k3s, k3s_control]
+
+# ── 4. Wait for K3s API Server to be Ready ───────────────────
+- name: k3s_control | Wait for K3s API server to become reachable (port 6443)
+  ansible.builtin.wait_for:
+    host: "{{ ansible_host }}"
+    port: 6443
+    timeout: 120
+    delay: 5
+    state: started
+    msg: "K3s API server did not start within 120 seconds"
+  tags: [k3s, k3s_control]
+
+# ── 5. Wait for Control Plane Node to Join ───────────────────
+- name: k3s_control | Wait for control plane node to reach Ready state
+  ansible.builtin.command:
+    cmd: >
+      kubectl wait --for=condition=Ready
+      node/{{ inventory_hostname }}
+      --timeout=60s
+      --kubeconfig {{ k3s_kubeconfig_remote }}
+  become: true
+  register: kubectl_wait_result
+  retries: 5
+  delay: 10
+  until: kubectl_wait_result.rc == 0
+  changed_when: false
+  tags: [k3s, k3s_control]
+
+# ── 6. Read Node Token (shared with workers) ─────────────────
+- name: k3s_control | Wait for node-token file to exist
+  ansible.builtin.wait_for:
+    path: "{{ k3s_node_token_file }}"
+    timeout: 60
+    msg: "K3s node-token file not found after 60 seconds"
+  become: true
+  tags: [k3s, k3s_control]
+
+- name: k3s_control | Read K3s node token
+  ansible.builtin.slurp:
+    src: "{{ k3s_node_token_file }}"
+  become: true
+  register: k3s_token_raw
+  no_log: true
+  tags: [k3s, k3s_control]
+
+- name: k3s_control | Store K3s token as host fact (accessible to workers via hostvars)
+  ansible.builtin.set_fact:
+    k3s_node_token: "{{ k3s_token_raw.content | b64decode | trim }}"
+  no_log: true
+  tags: [k3s, k3s_control]
+
+# ── 7. Fetch and Patch Kubeconfig ─────────────────────────────
+- name: k3s_control | Create local files directory for kubeconfig
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../files"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  tags: [k3s, k3s_control, kubeconfig]
+
+- name: k3s_control | Fetch kubeconfig from control plane to local machine
+  ansible.builtin.fetch:
+    src: "{{ k3s_kubeconfig_remote }}"
+    dest: "{{ playbook_dir }}/../files/kubeconfig.yaml"
+    flat: true
+    fail_on_missing: true
+  become: true
+  tags: [k3s, k3s_control, kubeconfig]
+
+- name: k3s_control | Patch kubeconfig — replace 127.0.0.1 with public IP
+  ansible.builtin.replace:
+    path: "{{ playbook_dir }}/../files/kubeconfig.yaml"
+    regexp: 'https://127\.0\.0\.1:6443'
+    replace: "https://{{ ansible_host }}:6443"
+  delegate_to: localhost
+  become: false
+  tags: [k3s, k3s_control, kubeconfig]
+
+- name: k3s_control | Set strict permissions on local kubeconfig
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../files/kubeconfig.yaml"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  tags: [k3s, k3s_control, kubeconfig]
+
+# ── 8. Apply Node Labels ──────────────────────────────────────
+- name: k3s_control | Apply control-plane labels
+  ansible.builtin.command:
+    cmd: >
+      kubectl label node {{ inventory_hostname }}
+      node-role.kubernetes.io/control-plane=true
+      promptforge/role=control-plane
+      --overwrite
+      --kubeconfig {{ k3s_kubeconfig_remote }}
+  become: true
+  changed_when: false
+  tags: [k3s, k3s_control]
+
+# ── 9. Create promptforge Namespaces ─────────────────────────
+- name: k3s_control | Create production namespace
+  ansible.builtin.command:
+    cmd: >
+      kubectl create namespace {{ k8s_namespace_prod }}
+      --dry-run=client -o yaml
+      | kubectl apply -f - --kubeconfig {{ k3s_kubeconfig_remote }}
+  become: true
+  changed_when: false
+  tags: [k3s, k3s_control, namespaces]
+
+- name: k3s_control | Create staging namespace
+  ansible.builtin.command:
+    cmd: >
+      kubectl create namespace {{ k8s_namespace_staging }}
+      --dry-run=client -o yaml
+      | kubectl apply -f - --kubeconfig {{ k3s_kubeconfig_remote }}
+  become: true
+  changed_when: false
+  tags: [k3s, k3s_control, namespaces]
+
+# ── 10. Verify Cluster Status ────────────────────────────────
+- name: k3s_control | Print cluster node summary
+  ansible.builtin.command:
+    cmd: kubectl get nodes -o wide --kubeconfig {{ k3s_kubeconfig_remote }}
+  become: true
+  changed_when: false
+  register: cluster_nodes
+  tags: [k3s, k3s_control]
+
+- name: k3s_control | Display cluster nodes
+  ansible.builtin.debug:
+    msg: "{{ cluster_nodes.stdout_lines }}"
+  tags: [k3s, k3s_control]

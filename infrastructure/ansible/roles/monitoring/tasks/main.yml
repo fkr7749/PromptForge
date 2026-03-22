@@ -1,0 +1,295 @@
+---
+# ============================================================
+# Role: monitoring — Install Prometheus, Grafana, Loki stack
+# ============================================================
+# Runs on: [control_plane] hosts only
+# Pre-requisites:
+#   - Helm installed (helm role)
+#   - NGINX Ingress Controller running (helm role)
+#   - cert-manager + ClusterIssuers ready (helm role)
+# ============================================================
+
+# ── 1. Add Monitoring Helm Repositories ──────────────────────
+- name: monitoring | Add prometheus-community Helm repository
+  ansible.builtin.command:
+    cmd: helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_remote }}"
+  changed_when: false
+  tags: [monitoring, prometheus]
+
+- name: monitoring | Add Grafana Helm repository
+  ansible.builtin.command:
+    cmd: helm repo add grafana https://grafana.github.io/helm-charts
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_remote }}"
+  changed_when: false
+  tags: [monitoring, grafana]
+
+- name: monitoring | Update Helm repositories
+  ansible.builtin.command:
+    cmd: helm repo update
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_remote }}"
+  changed_when: false
+  tags: [monitoring]
+
+# ── 2. Create Monitoring Namespace ───────────────────────────
+- name: monitoring | Create monitoring namespace
+  ansible.builtin.command:
+    cmd: >
+      kubectl create namespace {{ monitoring_namespace }}
+      --dry-run=client -o yaml
+      | kubectl apply -f -
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_remote }}"
+  changed_when: false
+  tags: [monitoring]
+
+# ── 3. Create Grafana Admin Secret ───────────────────────────
+- name: monitoring | Create Grafana admin credentials secret
+  ansible.builtin.shell:
+    cmd: >
+      kubectl create secret generic grafana-admin-secret
+      --from-literal=admin-user=admin
+      --from-literal=admin-password={{ grafana_admin_password }}
+      -n {{ monitoring_namespace }}
+      --dry-run=client -o yaml
+      | kubectl apply -f -
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_remote }}"
+  no_log: true
+  changed_when: false
+  tags: [monitoring, grafana]
+
+# ── 4. Install kube-prometheus-stack ─────────────────────────
+- name: monitoring | Install / upgrade kube-prometheus-stack
+  ansible.builtin.command:
+    cmd: >
+      helm upgrade --install kube-prometheus-stack
+      prometheus-community/kube-prometheus-stack
+      --namespace {{ monitoring_namespace }}
+      --create-namespace
+      --set alertmanager.enabled=true
+      --set alertmanager.persistence.enabled=true
+      --set alertmanager.persistence.size=2Gi
+      --set grafana.enabled=true
+      --set grafana.admin.existingSecret=grafana-admin-secret
+      --set grafana.admin.userKey=admin-user
+      --set grafana.admin.passwordKey=admin-password
+      --set grafana.persistence.enabled=true
+      --set grafana.persistence.size=5Gi
+      --set grafana.ingress.enabled=true
+      --set grafana.ingress.ingressClassName=nginx
+      --set grafana.ingress.annotations."cert-manager\.io/cluster-issuer"=letsencrypt-prod
+      --set grafana.ingress.hosts[0]=grafana.{{ domain }}
+      --set grafana.ingress.tls[0].secretName=grafana-tls
+      --set grafana.ingress.tls[0].hosts[0]=grafana.{{ domain }}
+      --set grafana.sidecar.datasources.enabled=true
+      --set grafana.sidecar.dashboards.enabled=true
+      --set prometheus.enabled=true
+      --set prometheus.prometheusSpec.retention=15d
+      --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=10Gi
+      --set prometheus.prometheusSpec.resources.requests.cpu=100m
+      --set prometheus.prometheusSpec.resources.requests.memory=512Mi
+      --set prometheus.prometheusSpec.resources.limits.cpu=500m
+      --set prometheus.prometheusSpec.resources.limits.memory=2Gi
+      --set prometheusOperator.resources.requests.cpu=50m
+      --set prometheusOperator.resources.requests.memory=128Mi
+      --set nodeExporter.enabled=true
+      --set nodeExporter.tolerations[0].effect=NoSchedule
+      --set nodeExporter.tolerations[0].key=node-role.kubernetes.io/master
+      --set nodeExporter.tolerations[0].operator=Exists
+      --set kubeStateMetrics.enabled=true
+      --timeout 10m
+      --wait
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_remote }}"
+  register: prom_stack_result
+  changed_when: "'deployed' in prom_stack_result.stdout or 'upgraded' in prom_stack_result.stdout"
+  tags: [monitoring, prometheus, grafana]
+
+- name: monitoring | Wait for Prometheus pods to be ready
+  ansible.builtin.command:
+    cmd: >
+      kubectl rollout status statefulset/prometheus-kube-prometheus-stack-prometheus
+      -n {{ monitoring_namespace }}
+      --timeout=180s
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_remote }}"
+  changed_when: false
+  retries: 3
+  delay: 30
+  failed_when: false
+  tags: [monitoring, prometheus]
+
+# ── 5. Install Loki + Promtail (Log Aggregation) ─────────────
+- name: monitoring | Install / upgrade Loki Stack (Loki + Promtail)
+  ansible.builtin.command:
+    cmd: >
+      helm upgrade --install loki grafana/loki-stack
+      --namespace {{ monitoring_namespace }}
+      --create-namespace
+      --set loki.enabled=true
+      --set loki.persistence.enabled=true
+      --set loki.persistence.size=10Gi
+      --set loki.resources.requests.cpu=50m
+      --set loki.resources.requests.memory=128Mi
+      --set loki.resources.limits.cpu=200m
+      --set loki.resources.limits.memory=512Mi
+      --set loki.config.auth_enabled=false
+      --set loki.config.schema_config.configs[0].from=2020-10-24
+      --set loki.config.schema_config.configs[0].store=boltdb-shipper
+      --set loki.config.schema_config.configs[0].object_store=filesystem
+      --set loki.config.schema_config.configs[0].schema=v11
+      --set loki.config.schema_config.configs[0].index.prefix=index_
+      --set loki.config.schema_config.configs[0].index.period=24h
+      --set promtail.enabled=true
+      --set promtail.resources.requests.cpu=25m
+      --set promtail.resources.requests.memory=64Mi
+      --set grafana.enabled=false
+      --timeout 5m
+      --wait
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_remote }}"
+  register: loki_install_result
+  changed_when: "'deployed' in loki_install_result.stdout or 'upgraded' in loki_install_result.stdout"
+  tags: [monitoring, loki]
+
+# ── 6. Configure Grafana Loki Datasource ─────────────────────
+- name: monitoring | Create Loki datasource ConfigMap for Grafana
+  ansible.builtin.shell:
+    cmd: |
+      kubectl apply -f - --kubeconfig {{ k3s_kubeconfig_remote }} << 'EOF'
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: grafana-loki-datasource
+        namespace: {{ monitoring_namespace }}
+        labels:
+          grafana_datasource: "1"
+      data:
+        loki-datasource.yaml: |
+          apiVersion: 1
+          datasources:
+            - name: Loki
+              type: loki
+              access: proxy
+              url: http://loki:3100
+              isDefault: false
+              jsonData:
+                maxLines: 1000
+      EOF
+  become: true
+  changed_when: false
+  tags: [monitoring, loki, grafana]
+
+# ── 7. Create PromptForge Grafana Dashboard ConfigMap ─────────
+- name: monitoring | Deploy PromptForge metrics dashboard ConfigMap
+  ansible.builtin.shell:
+    cmd: |
+      kubectl apply -f - --kubeconfig {{ k3s_kubeconfig_remote }} << 'MANIFEST'
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: promptforge-grafana-dashboard
+        namespace: {{ monitoring_namespace }}
+        labels:
+          grafana_dashboard: "1"
+      data:
+        promptforge-dashboard.json: |
+          {
+            "title": "PromptForge — Application Overview",
+            "uid": "promptforge-main",
+            "schemaVersion": 39,
+            "refresh": "30s",
+            "panels": [
+              {
+                "id": 1,
+                "type": "stat",
+                "title": "Total HTTP Requests",
+                "targets": [{
+                  "expr": "sum(rate(nginx_ingress_controller_requests{namespace=\"promptforge-prod\"}[5m]))",
+                  "legendFormat": "req/s"
+                }]
+              },
+              {
+                "id": 2,
+                "type": "timeseries",
+                "title": "Request Rate by Service",
+                "targets": [{
+                  "expr": "sum by (service) (rate(nginx_ingress_controller_requests{namespace=\"promptforge-prod\"}[5m]))",
+                  "legendFormat": "{{ '{{service}}' }}"
+                }]
+              },
+              {
+                "id": 3,
+                "type": "stat",
+                "title": "Error Rate (5xx)",
+                "targets": [{
+                  "expr": "sum(rate(nginx_ingress_controller_requests{status=~\"5..\",namespace=\"promptforge-prod\"}[5m]))",
+                  "legendFormat": "errors/s"
+                }]
+              },
+              {
+                "id": 4,
+                "type": "gauge",
+                "title": "Pod CPU Usage",
+                "targets": [{
+                  "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"promptforge-prod\"}[5m])) by (pod) * 100",
+                  "legendFormat": "{{ '{{pod}}' }}"
+                }]
+              }
+            ]
+          }
+      MANIFEST
+  become: true
+  changed_when: false
+  tags: [monitoring, grafana, dashboards]
+
+# ── 8. Expose Grafana via NodePort (fallback if no LB) ────────
+- name: monitoring | Check current Grafana service type
+  ansible.builtin.command:
+    cmd: >
+      kubectl get svc kube-prometheus-stack-grafana
+      -n {{ monitoring_namespace }}
+      -o jsonpath='{.spec.type}'
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_remote }}"
+  changed_when: false
+  register: grafana_svc_type
+  failed_when: false
+  tags: [monitoring, grafana]
+
+- name: monitoring | Print Grafana access information
+  ansible.builtin.debug:
+    msg:
+      - "Grafana service type: {{ grafana_svc_type.stdout | default('unknown') }}"
+      - "Access Grafana at: https://grafana.{{ domain }}"
+      - "Credentials stored in secret: grafana-admin-secret (namespace: {{ monitoring_namespace }})"
+  tags: [monitoring, grafana]
+
+# ── 9. Final Verification ─────────────────────────────────────
+- name: monitoring | Print all monitoring namespace pods
+  ansible.builtin.command:
+    cmd: kubectl get pods -n {{ monitoring_namespace }} -o wide
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_remote }}"
+  changed_when: false
+  register: monitoring_pods
+  tags: [monitoring]
+
+- name: monitoring | Display monitoring stack pods
+  ansible.builtin.debug:
+    msg: "{{ monitoring_pods.stdout_lines }}"
+  tags: [monitoring]

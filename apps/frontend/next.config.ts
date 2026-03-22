@@ -2,6 +2,7 @@ import type { NextConfig } from 'next'
 import path from 'path'
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   transpilePackages: ['@promptforge/types', '@promptforge/database'],
   // Required for monorepo: trace files from the repo root, not just apps/frontend
   outputFileTracingRoot: path.join(__dirname, '../../'),

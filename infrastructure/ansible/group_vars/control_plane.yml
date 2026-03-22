@@ -1,0 +1,44 @@
+---
+# ============================================================
+# PromptForge — Control Plane Group Variables
+# ============================================================
+
+# K3s role for nodes in this group
+k3s_role: server
+
+# Core K3s server arguments
+# --disable traefik     : Use NGINX Ingress Controller instead of Traefik
+# --write-kubeconfig-mode 644 : Allow non-root kubeconfig reads (needed for CI)
+# --cluster-cidr        : Pod CIDR (must match group_vars/all.yml)
+# --service-cidr        : Service CIDR (must match group_vars/all.yml)
+# --flannel-backend     : vxlan is reliable on Oracle Cloud VCN
+k3s_server_args: >-
+  server
+  --disable traefik
+  --disable servicelb
+  --write-kubeconfig-mode 644
+  --node-name {{ inventory_hostname }}
+  --cluster-cidr {{ k3s_cluster_cidr }}
+  --service-cidr {{ k3s_service_cidr }}
+  --flannel-backend vxlan
+  --kube-apiserver-arg="enable-admission-plugins=NodeRestriction"
+  --kube-apiserver-arg="audit-log-path=/var/log/k3s-audit.log"
+  --kube-apiserver-arg="audit-log-maxage=30"
+  --kube-apiserver-arg="audit-log-maxbackup=3"
+  --kube-apiserver-arg="audit-log-maxsize=100"
+
+# Extra server args — overridable per inventory (e.g. staging sets --node-taint="")
+k3s_server_args_extra: ""
+
+# Kubeconfig file paths
+k3s_kubeconfig_remote: "/etc/rancher/k3s/k3s.yaml"
+k3s_kubeconfig_local: "files/kubeconfig.yaml"
+
+# Paths for cluster token (shared with workers)
+k3s_node_token_file: "/var/lib/rancher/k3s/server/node-token"
+
+# Service name on the control plane node
+k3s_service_name: "k3s"
+
+# Control plane K3s systemd unit
+k3s_systemd_service: "k3s.service"

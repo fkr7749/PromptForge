@@ -1,0 +1,35 @@
+authService:
+  replicas: 1
+
+promptService:
+  replicas: 1
+
+aiExecution:
+  replicas: 1
+
+playground:
+  replicas: 1
+
+searchService:
+  replicas: 1
+
+analytics:
+  replicas: 1
+
+userService:
+  replicas: 1
+
+marketplace:
+  replicas: 1
+
+safetyService:
+  replicas: 1
+
+frontend:
+  replicas: 1
+
+ingress:
+  host: "staging.promptforge.example.com"
+
+certManager:
+  issuer: "letsencrypt-staging"

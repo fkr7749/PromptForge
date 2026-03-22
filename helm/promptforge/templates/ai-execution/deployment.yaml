@@ -1,0 +1,80 @@
+{{- if .Values.aiExecution.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "promptforge.fullname" . }}-ai-execution
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "promptforge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-execution
+spec:
+  replicas: {{ .Values.aiExecution.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: ai-execution
+      {{- include "promptforge.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: ai-execution
+        {{- include "promptforge.selectorLabels" . | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4003"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: ai-execution
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.global.imageOwner }}/{{ .Values.aiExecution.image.name }}:{{ .Values.global.imageTag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: 4003
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: promptforge-config
+            - secretRef:
+                name: promptforge-secrets
+          resources:
+            {{- toYaml .Values.aiExecution.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 4003
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 4003
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health/startup
+              port: 4003
+            failureThreshold: 30
+            periodSeconds: 10
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/component
+                      operator: In
+                      values: [ai-execution]
+                topologyKey: kubernetes.io/hostname
+{{- end }}

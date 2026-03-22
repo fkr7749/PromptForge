@@ -1,0 +1,20 @@
+{{- if .Values.promptService.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "promptforge.fullname" . }}-prompt-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "promptforge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prompt-service
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/component: prompt-service
+    {{- include "promptforge.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.promptService.service.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}

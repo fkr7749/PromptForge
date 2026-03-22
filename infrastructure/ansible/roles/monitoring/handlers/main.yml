@@ -1,0 +1,14 @@
+---
+# ============================================================
+# Role: monitoring — Handlers
+# ============================================================
+
+- name: restart kube-prometheus-stack
+  ansible.builtin.command:
+    cmd: >
+      kubectl rollout restart deployment
+      -n {{ monitoring_namespace }}
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_remote }}"
+  changed_when: false

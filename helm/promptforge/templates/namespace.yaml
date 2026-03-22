@@ -1,0 +1,9 @@
+{{- $ns := lookup "v1" "Namespace" "" .Release.Namespace }}
+{{- if not $ns }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Release.Namespace }}
+  labels:
+    {{- include "promptforge.labels" . | nindent 4 }}
+{{- end }}

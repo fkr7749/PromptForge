@@ -1,0 +1,136 @@
+groups:
+  - name: promptforge.pod_health
+    interval: 30s
+    rules:
+      # ── Pod not ready ──────────────────────────────────────────────────────
+      - alert: PodNotReady
+        expr: |
+          kube_pod_status_ready{condition="true", namespace=~"promptforge-.*"}
+          == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Pod {{ $labels.pod }} is not ready"
+          description: >
+            Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in a non-ready
+            state for more than 5 minutes.
+
+      # ── Pod restarting too often ───────────────────────────────────────────
+      - alert: PodRestartingTooOften
+        expr: |
+          increase(
+            kube_pod_container_status_restarts_total{namespace=~"promptforge-.*"}[10m]
+          ) > 5
+        for: 0m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Container {{ $labels.container }} restarting frequently"
+          description: >
+            Container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }}
+            has restarted more than 5 times in the last 10 minutes.
+            Current restart count delta: {{ $value }}.
+
+  - name: promptforge.http_errors
+    interval: 30s
+    rules:
+      # ── High HTTP 5xx error rate ───────────────────────────────────────────
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum by (job) (
+              rate(http_requests_total{
+                status=~"5..",
+                namespace=~"promptforge-.*"
+              }[5m])
+            )
+            /
+            sum by (job) (
+              rate(http_requests_total{
+                namespace=~"promptforge-.*"
+              }[5m])
+            )
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "High 5xx error rate on {{ $labels.job }}"
+          description: >
+            Service {{ $labels.job }} is returning HTTP 5xx errors at a rate
+            above 5% for the last 5 minutes. Current rate: {{ $value | humanizePercentage }}.
+
+      # ── High P95 latency ──────────────────────────────────────────────────
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (job, le) (
+              rate(http_request_duration_seconds_bucket{
+                namespace=~"promptforge-.*"
+              }[5m])
+            )
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High P95 latency on {{ $labels.job }}"
+          description: >
+            The 95th-percentile request latency for {{ $labels.job }} has exceeded
+            2 seconds for more than 5 minutes. Current P95: {{ $value | humanizeDuration }}.
+
+  - name: promptforge.infrastructure
+    interval: 60s
+    rules:
+      # ── Low disk space ────────────────────────────────────────────────────
+      - alert: LowDiskSpace
+        expr: |
+          (
+            node_filesystem_avail_bytes{
+              mountpoint="/",
+              fstype!~"tmpfs|overlay"
+            }
+            /
+            node_filesystem_size_bytes{
+              mountpoint="/",
+              fstype!~"tmpfs|overlay"
+            }
+          ) < 0.20
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Low disk space on node {{ $labels.instance }}"
+          description: >
+            Filesystem {{ $labels.device }} mounted at {{ $labels.mountpoint }}
+            on node {{ $labels.instance }} has less than 20% free space remaining.
+            Available: {{ $value | humanizePercentage }}.
+
+  - name: promptforge.ai_execution
+    interval: 30s
+    rules:
+      # ── BullMQ queue depth too high ───────────────────────────────────────
+      - alert: AIExecutionQueueDepth
+        expr: |
+          bullmq_queue_waiting_count{
+            queue=~"ai-execution.*",
+            namespace=~"promptforge-.*"
+          } > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: ai
+        annotations:
+          summary: "AI execution queue depth is high ({{ $value }} jobs waiting)"
+          description: >
+            The BullMQ queue {{ $labels.queue }} has had more than 100 waiting
+            jobs for at least 5 minutes. This may indicate workers are not
+            keeping up with demand or are crashing.
+            Current waiting jobs: {{ $value }}.

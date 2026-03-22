@@ -1,0 +1,147 @@
+---
+# ============================================================
+# Role: k3s_worker — Install K3s Agent (Worker Nodes)
+# ============================================================
+# Runs on: [workers] hosts only
+# Pre-requisite: k3s_control play MUST complete first so that
+#   hostvars[groups['control_plane'][0]]['k3s_node_token'] is set.
+# ============================================================
+
+# ── 1. Resolve Control Plane Connection Details ───────────────
+- name: k3s_worker | Set k3s_control_ip from control plane hostvars
+  ansible.builtin.set_fact:
+    k3s_control_ip: "{{ hostvars[groups['control_plane'][0]]['ansible_host'] }}"
+  tags: [k3s, k3s_worker]
+
+- name: k3s_worker | Set k3s_token from control plane hostvars
+  ansible.builtin.set_fact:
+    k3s_token: "{{ hostvars[groups['control_plane'][0]]['k3s_node_token'] }}"
+  no_log: true
+  tags: [k3s, k3s_worker]
+
+- name: k3s_worker | Validate that token was retrieved from control plane
+  ansible.builtin.assert:
+    that:
+      - k3s_token is defined
+      - k3s_token | length > 0
+    fail_msg: >
+      k3s_node_token is not set on the control plane host.
+      Ensure the k3s_control role completed successfully before running k3s_worker.
+    success_msg: "Control plane token retrieved successfully."
+  tags: [k3s, k3s_worker]
+
+# ── 2. Verify API Server is Reachable from Worker ─────────────
+- name: k3s_worker | Verify K3s API server is reachable from this worker
+  ansible.builtin.wait_for:
+    host: "{{ k3s_control_ip }}"
+    port: 6443
+    timeout: 60
+    delay: 2
+    state: started
+    msg: "Cannot reach K3s API server at {{ k3s_control_ip }}:6443 from {{ inventory_hostname }}"
+  tags: [k3s, k3s_worker]
+
+# ── 3. Download K3s Installation Script ──────────────────────
+- name: k3s_worker | Download K3s installation script
+  ansible.builtin.get_url:
+    url: "{{ k3s_install_script_url }}"
+    dest: /tmp/k3s_install.sh
+    mode: "0755"
+    force: false
+  become: true
+  tags: [k3s, k3s_worker]
+
+# ── 4. Install K3s Agent ──────────────────────────────────────
+- name: k3s_worker | Check if K3s agent is already installed
+  ansible.builtin.stat:
+    path: "{{ k3s_install_dir }}/k3s"
+  register: k3s_agent_binary_stat
+  tags: [k3s, k3s_worker]
+
+- name: k3s_worker | Install K3s agent and join cluster
+  ansible.builtin.shell:
+    cmd: /tmp/k3s_install.sh {{ k3s_agent_args }}
+    creates: "{{ k3s_install_dir }}/k3s"
+  become: true
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+    K3S_URL: "https://{{ k3s_control_ip }}:6443"
+    K3S_TOKEN: "{{ k3s_token }}"
+    INSTALL_K3S_EXEC: "{{ k3s_agent_args }}"
+  no_log: true
+  tags: [k3s, k3s_worker]
+  notify: restart k3s-agent
+
+# ── 5. Enable and Start K3s Agent Service ────────────────────
+- name: k3s_worker | Enable and start K3s agent service
+  ansible.builtin.systemd:
+    name: "{{ k3s_systemd_service }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+  tags: [k3s, k3s_worker]
+
+# ── 6. Wait for Agent to Register with Cluster ───────────────
+- name: k3s_worker | Pause 30 seconds for agent to initialise and register
+  ansible.builtin.pause:
+    seconds: 30
+    prompt: "Waiting for {{ inventory_hostname }} agent to contact control plane..."
+  tags: [k3s, k3s_worker]
+
+- name: k3s_worker | Verify this worker node appears in kubectl get nodes
+  ansible.builtin.command:
+    cmd: >
+      kubectl get node {{ inventory_hostname }}
+      --kubeconfig {{ k3s_kubeconfig_remote }}
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  become: true
+  register: node_check
+  retries: 10
+  delay: 15
+  until: node_check.rc == 0
+  changed_when: false
+  tags: [k3s, k3s_worker]
+
+- name: k3s_worker | Wait for worker node to reach Ready state
+  ansible.builtin.command:
+    cmd: >
+      kubectl wait --for=condition=Ready
+      node/{{ inventory_hostname }}
+      --timeout=120s
+      --kubeconfig {{ k3s_kubeconfig_remote }}
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  become: true
+  changed_when: false
+  tags: [k3s, k3s_worker]
+
+# ── 7. Apply Worker Node Labels ───────────────────────────────
+- name: k3s_worker | Apply worker node labels
+  ansible.builtin.command:
+    cmd: >
+      kubectl label node {{ inventory_hostname }}
+      {{ item }}
+      --overwrite
+      --kubeconfig {{ k3s_kubeconfig_remote }}
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  become: true
+  loop: "{{ k3s_agent_node_labels }}"
+  changed_when: false
+  tags: [k3s, k3s_worker]
+
+# ── 8. Final Cluster Node List ────────────────────────────────
+- name: k3s_worker | Display final cluster node status
+  ansible.builtin.command:
+    cmd: kubectl get nodes -o wide --kubeconfig {{ k3s_kubeconfig_remote }}
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  become: true
+  changed_when: false
+  run_once: true
+  register: final_nodes
+  tags: [k3s, k3s_worker]
+
+- name: k3s_worker | Print final cluster node list
+  ansible.builtin.debug:
+    msg: "{{ final_nodes.stdout_lines }}"
+  run_once: true
+  tags: [k3s, k3s_worker]

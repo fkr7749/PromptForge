@@ -1,0 +1,24 @@
+{{- if .Values.playground.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "promptforge.fullname" . }}-playground
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "promptforge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: playground
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "promptforge.fullname" . }}-playground
+  minReplicas: {{ .Values.playground.replicas }}
+  maxReplicas: {{ mul .Values.playground.replicas 3 }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+{{- end }}
