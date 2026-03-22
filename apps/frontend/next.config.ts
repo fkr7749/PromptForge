@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   // Required for monorepo: trace files from the repo root, not just apps/frontend
   outputFileTracingRoot: path.join(__dirname, '../../'),
   outputFileTracingIncludes: {
-    '/api/**/*': ['./generated/client/*.node'],
+    '**': ['./generated/client/*.node'],
   },
   images: {
     remotePatterns: [
