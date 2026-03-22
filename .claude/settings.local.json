@@ -78,7 +78,9 @@
       "Bash(find:*)",
       "Bash(python3 -c \"import sys, json; data=sys.stdin.read\\(\\); print\\(data[:500]\\)\")",
       "Bash(/dev/null echo:*)",
-      "Bash(pkill -f \"next\")"
+      "Bash(pkill -f \"next\")",
+      "Bash(git add:*)",
+      "Bash(openssl rand:*)"
     ]
   }
 }
