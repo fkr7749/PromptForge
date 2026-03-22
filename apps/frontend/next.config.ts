@@ -1,7 +1,10 @@
 import type { NextConfig } from 'next'
+import path from 'path'
 
 const nextConfig: NextConfig = {
   transpilePackages: ['@promptforge/types', '@promptforge/database'],
+  // Required for monorepo: trace files from the repo root, not just apps/frontend
+  outputFileTracingRoot: path.join(__dirname, '../../'),
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'avatars.githubusercontent.com' },
@@ -12,6 +15,9 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
+    outputFileTracingIncludes: {
+      '/api/**/*': ['./packages/database/generated/client/*.node'],
+    },
   },
   headers: async () => [
     {

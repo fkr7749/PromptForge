@@ -144,6 +144,8 @@ function PlaygroundInner() {
 
   const handleOptimize = useCallback(async () => {
     setOptimizing(true)
+    setOptimizerResult(null)
+    setActiveToolTab('optimizer')
     try {
       const res = await fetch('/api/playground/optimize', {
         method: 'POST',
@@ -153,7 +155,6 @@ function PlaygroundInner() {
       const data = await res.json()
       if (data.optimizedPrompt) {
         setOptimizerResult(data)
-        setActiveToolTab('optimizer')
       }
     } catch (e) { console.error(e) }
     setOptimizing(false)
@@ -161,6 +162,8 @@ function PlaygroundInner() {
 
   const handleSafety = useCallback(async () => {
     setChecking(true)
+    setSafetyResult(null)
+    setActiveToolTab('safety')
     try {
       const res = await fetch('/api/playground/safety', {
         method: 'POST',
@@ -170,7 +173,6 @@ function PlaygroundInner() {
       const data = await res.json()
       if (data.overallScore !== undefined) {
         setSafetyResult(data)
-        setActiveToolTab('safety')
       }
     } catch (e) { console.error(e) }
     setChecking(false)
@@ -633,70 +635,7 @@ function PlaygroundInner() {
             />
           </div>
 
-          {/* Tool panels — appear inside editor area */}
-          <AnimatePresence>
-            {activeToolTab === 'optimizer' && optimizerResult && (
-              <motion.div key="optimizer"
-                initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden border-t border-[#1E1E22]">
-                <OptimizerPanel
-                  result={optimizerResult}
-                  onApply={(opt) => { setPrompt(opt); setActiveToolTab(null) }}
-                  onClose={() => setActiveToolTab(null)}
-                />
-              </motion.div>
-            )}
-            {activeToolTab === 'safety' && safetyResult && (
-              <motion.div key="safety"
-                initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden border-t border-[#1E1E22]">
-                <SafetyPanel result={safetyResult} onClose={() => setActiveToolTab(null)} />
-              </motion.div>
-            )}
-            {activeToolTab === 'translate' && (
-              <motion.div key="translate"
-                initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden border-t border-[#1E1E22]">
-                <TranslationPanel
-                  originalContent={prompt}
-                  onUseTranslation={t => { setPrompt(t); setActiveToolTab(null) }}
-                  onClose={() => setActiveToolTab(null)}
-                />
-              </motion.div>
-            )}
-            {activeToolTab === 'context' && (
-              <motion.div key="context"
-                initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden border-t border-[#1E1E22]">
-                <div className="p-4 bg-[#0F0F11]">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-black uppercase tracking-widest text-[#555560]">Context (RAG)</span>
-                    <div className="flex items-center gap-3">
-                      <label className="flex items-center gap-2 text-xs text-[#666670] cursor-pointer">
-                        <div
-                          onClick={() => setContextEnabled(v => !v)}
-                          className={`w-8 h-4 rounded-full transition-colors relative cursor-pointer ${contextEnabled ? 'bg-forge-orange' : 'bg-[#2A2A2E]'}`}
-                        >
-                          <div className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${contextEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                        </div>
-                        Enable
-                      </label>
-                      <button onClick={() => setActiveToolTab(null)} className="text-[#444448] hover:text-[#888890]">
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                  <textarea
-                    value={contextText}
-                    onChange={e => setContextText(e.target.value.slice(0, 8000))}
-                    placeholder="Paste document text or knowledge base content… (max 8000 chars)"
-                    className="w-full h-28 resize-none rounded-lg border border-[#2A2A2E] bg-[#141416] p-3 text-xs text-[#C8C8CC] placeholder:text-[#333338] focus:outline-none focus:border-[#444448] font-mono"
-                  />
-                  <div className="mt-1 text-right text-[10px] text-[#444448]">{contextText.length}/8000</div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Tool panels are now rendered as modals — see ToolModal below */}
 
           {/* Variables */}
           {detectedVars.length > 0 && (
@@ -868,6 +807,129 @@ function PlaygroundInner() {
       </div>
 
       <KeyboardShortcuts isOpen={showShortcuts} onClose={() => setShowShortcuts(false)} />
+
+      {/* ── Tool Modal Overlay ───────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {activeToolTab !== null && (
+          <motion.div
+            key="tool-modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8"
+            style={{ backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+            onClick={(e) => { if (e.target === e.currentTarget) setActiveToolTab(null) }}
+          >
+            <motion.div
+              key="tool-modal-panel"
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="relative w-full max-w-2xl max-h-[85vh] rounded-xl border border-[#2A2A2E] bg-[#0F0F11] flex flex-col shadow-2xl shadow-black/60 overflow-hidden"
+            >
+              {/* Modal header */}
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1E1E22] shrink-0">
+                <div className="flex items-center gap-2">
+                  {activeToolTab === 'optimizer' && <><Sparkles className="h-4 w-4 text-amber-400" /><span className="text-sm font-black text-[#E8E8EC]">Prompt Optimizer</span></>}
+                  {activeToolTab === 'safety' && <><Shield className="h-4 w-4 text-emerald-400" /><span className="text-sm font-black text-[#E8E8EC]">Safety Check</span></>}
+                  {activeToolTab === 'translate' && <><Languages className="h-4 w-4 text-blue-400" /><span className="text-sm font-black text-[#E8E8EC]">Translate Prompt</span></>}
+                  {activeToolTab === 'context' && <><FileText className="h-4 w-4 text-purple-400" /><span className="text-sm font-black text-[#E8E8EC]">Context (RAG)</span></>}
+                </div>
+                <button
+                  onClick={() => setActiveToolTab(null)}
+                  className="flex items-center justify-center h-7 w-7 rounded-lg text-[#555560] hover:text-[#E8E8EC] hover:bg-[#1E1E22] transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Modal body — scrollable */}
+              <div className="flex-1 overflow-y-auto">
+                {activeToolTab === 'optimizer' && optimizerResult && (
+                  <OptimizerPanel
+                    result={optimizerResult}
+                    onApply={(opt) => { setPrompt(opt); setActiveToolTab(null) }}
+                    onClose={() => setActiveToolTab(null)}
+                  />
+                )}
+                {activeToolTab === 'optimizer' && !optimizerResult && (
+                  <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                    <div className="h-8 w-8 rounded-full border-2 border-amber-400/30 border-t-amber-400 animate-spin" />
+                    <p className="text-sm text-[#555560]">Analyzing your prompt…</p>
+                  </div>
+                )}
+                {activeToolTab === 'safety' && safetyResult && (
+                  <SafetyPanel result={safetyResult} onClose={() => setActiveToolTab(null)} />
+                )}
+                {activeToolTab === 'safety' && !safetyResult && (
+                  <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                    <div className="h-8 w-8 rounded-full border-2 border-emerald-400/30 border-t-emerald-400 animate-spin" />
+                    <p className="text-sm text-[#555560]">Running safety analysis…</p>
+                  </div>
+                )}
+                {activeToolTab === 'translate' && (
+                  <TranslationPanel
+                    originalContent={prompt}
+                    onUseTranslation={t => { setPrompt(t); setActiveToolTab(null) }}
+                    onClose={() => setActiveToolTab(null)}
+                  />
+                )}
+                {activeToolTab === 'context' && (
+                  <div className="p-5">
+                    <p className="text-xs text-[#555560] mb-4 leading-relaxed">
+                      Paste document text or knowledge base content below. When enabled, it will be injected as context before your system prompt.
+                    </p>
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="flex items-center gap-3 text-sm text-[#C8C8CC] cursor-pointer select-none">
+                        <div
+                          onClick={() => setContextEnabled(v => !v)}
+                          className={`w-10 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${contextEnabled ? 'bg-forge-orange' : 'bg-[#2A2A2E]'}`}
+                        >
+                          <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${contextEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                        </div>
+                        <span className="font-bold">Enable context injection</span>
+                      </label>
+                      {contextEnabled && (
+                        <span className="rounded-full bg-purple-500/20 px-2 py-0.5 text-[10px] font-black text-purple-400 border border-purple-500/30">ACTIVE</span>
+                      )}
+                    </div>
+                    <textarea
+                      value={contextText}
+                      onChange={e => setContextText(e.target.value.slice(0, 8000))}
+                      placeholder="Paste document text, article, or knowledge base content here…&#10;&#10;This will be prepended to your system prompt when running."
+                      className="w-full resize-none rounded-lg border border-[#2A2A2E] bg-[#141416] p-4 text-sm text-[#C8C8CC] placeholder:text-[#333338] focus:outline-none focus:border-[#444448] font-mono leading-relaxed"
+                      style={{ minHeight: '240px' }}
+                    />
+                    <div className="mt-2 flex items-center justify-between">
+                      <span className="text-[10px] text-[#444448]">Max 8,000 characters</span>
+                      <span className={`text-[10px] font-mono ${contextText.length > 7500 ? 'text-amber-400' : 'text-[#444448]'}`}>
+                        {contextText.length.toLocaleString()} / 8,000
+                      </span>
+                    </div>
+                    <div className="mt-4 flex gap-2 justify-end">
+                      <button
+                        onClick={() => setContextText('')}
+                        disabled={!contextText}
+                        className="rounded-lg border border-[#2A2A2E] px-4 py-2 text-xs font-bold text-[#555560] hover:text-[#888890] hover:border-[#3A3A3E] transition-colors disabled:opacity-30"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        onClick={() => setActiveToolTab(null)}
+                        className="rounded-lg bg-purple-500/20 border border-purple-500/30 px-4 py-2 text-xs font-bold text-purple-400 hover:bg-purple-500/30 transition-colors"
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
