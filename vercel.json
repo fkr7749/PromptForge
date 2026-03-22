@@ -1,7 +1,7 @@
 {
   "buildCommand": "pnpm --filter @promptforge/database db:generate && pnpm --filter frontend build",
   "installCommand": "pnpm install",
-  "outputDirectory": "apps/frontend/.next",
+  "outputDirectory": ".next",
   "framework": "nextjs",
   "headers": [
     {
