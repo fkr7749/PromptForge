@@ -50,3 +50,22 @@ coverage
 # Misc
 *.pem
 .vercel
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+terraform.tfvars
+!terraform.tfvars.example
+
+# Minikube / kubectl binaries downloaded locally
+minikube-linux-amd64
+minikube-darwin-amd64

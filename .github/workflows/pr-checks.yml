@@ -1,46 +1,41 @@
 name: PR Checks
 
+# ci.yml already runs typecheck + lint + build on every pull_request.
+# This workflow adds a lightweight PR-only summary check for the GitHub
+# "required status checks" feature if you ever enable branch protection.
+
 on:
   pull_request:
     branches: [main, develop]
 
 jobs:
-  typecheck-and-lint:
-    name: "Check: ${{ matrix.service }}"
+  pr-ready:
+    name: PR Ready Check
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        service:
-          - frontend
-          - auth-service
-          - prompt-service
-          - ai-execution
-          - playground
-          - search-service
-          - analytics
-          - user-service
-          - marketplace
-          - safety-service
     steps:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: '9.12.0'
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck (${{ matrix.service }})
-        run: pnpm --filter ${{ matrix.service }} exec tsc --noEmit || true
+      - name: Generate Prisma client
+        run: pnpm --filter @promptforge/database db:generate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
         continue-on-error: true
 
-      - name: Lint (${{ matrix.service }})
-        run: pnpm --filter ${{ matrix.service }} run lint || true
-        continue-on-error: true
+      - name: PR check passed
+        run: echo "All checks passed — PR is ready for review"

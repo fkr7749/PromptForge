@@ -1,10 +1,16 @@
 name: PromptForge CI/CD Pipeline
 
 on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
+  # Manual trigger only — requires KUBECONFIG_STAGING + KUBECONFIG_PRODUCTION secrets.
+  # Automatic CI is handled by ci.yml. Run this workflow only when deploying to K8s.
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options: [staging, production]
 
 env:
   REGISTRY: ghcr.io

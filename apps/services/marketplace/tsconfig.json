@@ -1,0 +1,9 @@
+{
+  "extends": "@promptforge/tsconfig/node",
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strictPropertyInitialization": false,
+    "noUncheckedIndexedAccess": false
+  }
+}
