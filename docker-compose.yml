@@ -42,6 +42,29 @@ services:
       - meilisearch_data:/meili_data
 
   # ─── Services ──────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      target: development
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      DATABASE_URL: postgresql://promptforge:promptforge_dev@postgres:5432/promptforge
+      REDIS_URL: redis://redis:6379
+      NEXT_TELEMETRY_DISABLED: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/frontend:/app/apps/frontend
+      - ./packages:/app/packages
+
   auth-service:
     build:
       context: .
