@@ -86,9 +86,10 @@ resource "kubernetes_deployment" "frontend" {
             }
           }
 
+          # The frontend image does not expose a dedicated health endpoint.
+          # Probe the listening socket so Minikube rollouts do not fail on 404s.
           liveness_probe {
-            http_get {
-              path = "/api/health"
+            tcp_socket {
               port = var.port
             }
             initial_delay_seconds = 30
@@ -96,8 +97,7 @@ resource "kubernetes_deployment" "frontend" {
           }
 
           readiness_probe {
-            http_get {
-              path = "/api/health"
+            tcp_socket {
               port = var.port
             }
             initial_delay_seconds = 10
