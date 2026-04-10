@@ -165,12 +165,15 @@ export class ExecutionService {
       models.map((model) => this.execute({ ...opts, model }))
     )
 
-    return results.map((result, i) => ({
-      model: models[i],
-      ...(result.status === 'fulfilled'
+    return results.map((result, i) =>
+      result.status === 'fulfilled'
         ? { success: true, ...result.value }
-        : { success: false, error: result.reason instanceof Error ? result.reason.message : 'Error' }),
-    }))
+        : {
+            success: false,
+            model: models[i],
+            error: result.reason instanceof Error ? result.reason.message : 'Error',
+          }
+    )
   }
 
   getAvailableModels() {
