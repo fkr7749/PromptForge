@@ -1,0 +1,91 @@
+---
+# Deploy PromptForge to local Minikube cluster
+# Usage: ansible-playbook infrastructure/ansible/playbooks/deploy-local.yml
+- name: Deploy PromptForge to Minikube
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    namespace: promptforge
+    manifests_dir: "{{ playbook_dir }}/../../../k8s"
+    kubectl: kubectl
+
+  tasks:
+    - name: Check minikube is running
+      command: minikube status
+      register: minikube_status
+      changed_when: false
+      failed_when: "'Running' not in minikube_status.stdout"
+
+    - name: Print minikube status
+      debug:
+        msg: "{{ minikube_status.stdout_lines }}"
+
+    - name: Set kubectl context to minikube
+      command: kubectl config use-context minikube
+      changed_when: false
+
+    - name: Apply namespace
+      command: "{{ kubectl }} apply -f {{ manifests_dir }}/namespace.yaml"
+      register: ns_result
+
+    - name: Print namespace result
+      debug:
+        msg: "{{ ns_result.stdout }}"
+
+    - name: Apply deployment
+      command: "{{ kubectl }} apply -f {{ manifests_dir }}/deployment.yaml"
+      register: deploy_result
+
+    - name: Print deployment result
+      debug:
+        msg: "{{ deploy_result.stdout }}"
+
+    - name: Apply service
+      command: "{{ kubectl }} apply -f {{ manifests_dir }}/service.yaml"
+      register: svc_result
+
+    - name: Print service result
+      debug:
+        msg: "{{ svc_result.stdout }}"
+
+    - name: Wait for deployment rollout
+      command: >
+        {{ kubectl }} rollout status deployment/promptforge-frontend
+        -n {{ namespace }} --timeout=120s
+      register: rollout
+      changed_when: false
+
+    - name: Print rollout status
+      debug:
+        msg: "{{ rollout.stdout }}"
+
+    - name: Get pod status
+      command: "{{ kubectl }} get pods -n {{ namespace }} -o wide"
+      register: pods
+      changed_when: false
+
+    - name: Print pod status
+      debug:
+        msg: "{{ pods.stdout_lines }}"
+
+    - name: Get service info
+      command: "{{ kubectl }} get svc -n {{ namespace }}"
+      register: svcs
+      changed_when: false
+
+    - name: Print service info
+      debug:
+        msg: "{{ svcs.stdout_lines }}"
+
+    - name: Get app URL
+      command: minikube service promptforge-frontend -n {{ namespace }} --url
+      register: app_url
+      changed_when: false
+      ignore_errors: true
+
+    - name: Print access URL
+      debug:
+        msg: "App is accessible at: {{ app_url.stdout }}"
+      when: app_url.rc == 0

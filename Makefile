@@ -73,3 +73,31 @@ install: ## Install all dependencies
 
 format: ## Format all files
 	pnpm format
+
+# ─── Infrastructure (Minikube / Local K8s) ────────────────────────────────────
+docker-build-frontend: ## Build the frontend Docker image locally
+	docker build -t promptforge-frontend:latest -f apps/frontend/Dockerfile .
+
+tf-init: ## Initialise Terraform (Minikube provider)
+	cd infrastructure/terraform-local && terraform init
+
+tf-plan: ## Preview Terraform changes
+	cd infrastructure/terraform-local && terraform plan
+
+tf-apply: ## Apply Terraform configuration to Minikube
+	cd infrastructure/terraform-local && terraform apply -auto-approve
+
+tf-destroy: ## Destroy Terraform-managed resources
+	cd infrastructure/terraform-local && terraform destroy -auto-approve
+
+ansible-deploy: ## Deploy app to Minikube via Ansible
+	ansible-playbook infrastructure/ansible/playbooks/deploy-local.yml
+
+k8s-status: ## Show pod and service status in the promptforge namespace
+	kubectl get pods,svc -n promptforge -o wide
+
+k8s-logs: ## Tail logs from the frontend pod
+	kubectl logs -n promptforge -l component=frontend --tail=100 -f
+
+minikube-url: ## Get the Minikube service URL for the frontend
+	minikube service promptforge-frontend -n promptforge --url
