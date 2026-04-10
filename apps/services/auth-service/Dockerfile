@@ -26,7 +26,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY --from=builder /app/apps/services/auth-service/dist ./dist
-COPY --from=builder /app/packages/database/generated ./packages/database/generated
+COPY --from=builder /app/apps/frontend/generated/client ./apps/frontend/generated/client
 COPY --from=builder /app/node_modules ./node_modules
 
 EXPOSE 4001

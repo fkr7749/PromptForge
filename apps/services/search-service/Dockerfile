@@ -30,7 +30,7 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 --ingroup nodejs node
 
 COPY --from=builder --chown=node:nodejs /app/apps/services/search-service/dist ./dist
-COPY --from=builder --chown=node:nodejs /app/packages/database/generated ./packages/database/generated
+COPY --from=builder /app/apps/frontend/generated/client ./apps/frontend/generated/client
 COPY --from=builder --chown=node:nodejs /app/node_modules ./node_modules
 
 USER node
